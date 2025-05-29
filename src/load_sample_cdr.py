@@ -1,13 +1,15 @@
 import csv
-from src.db_config import get_db_connection
+from db_config import get_db_connection
 
 def load_sample_cdr(csv_file_path):
+    
     conn = get_db_connection()
     cur = conn.cursor()
 
     with open(csv_file_path, newline='') as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
+            print("Row: ", row)
             msisdn = row['msisdn']
             destination = row['destination']
             duration = int(row['duration'])
@@ -25,4 +27,4 @@ def load_sample_cdr(csv_file_path):
     print("CDRs inserted successfully.")
 
 if __name__ == "__main__":
-    load_sample_cdr("data/sample_cdr.csv")
+    load_sample_cdr("../data/sample_cdr.csv")
