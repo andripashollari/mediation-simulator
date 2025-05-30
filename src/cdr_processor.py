@@ -1,6 +1,5 @@
 from src.db_config import get_db_connection
 
-
 def process_cdrs():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -18,15 +17,33 @@ def process_cdrs():
             if hlr_result:
                 country, is_roaming, operator_name = hlr_result
 
+                if destination.startswith('355'):
+                    zone = 'ALBANIA'
+                    base_cost = 0.02
+                elif destination.startswith('39'):
+                    zone = 'EU'
+                    base_cost = 0.05
+                else:
+                    zone = 'INTERNATIONAL'
+                    base_cost = 0.10
+
+                cost = base_cost + 0.05 if is_roaming else base_cost
+
                 cur.execute("""
-                    INSERT INTO billing_feed (msisdn, destination, duration, event_type, timestamp, is_roaming, operator_name)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """, (msisdn, destination, duration, event_type, timestamp, is_roaming, operator_name))
+                    INSERT INTO billing_feed (
+                        msisdn, destination, duration, event_type, timestamp,
+                        is_roaming, operator_name, zone, cost
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    msisdn, destination, duration, event_type, timestamp,
+                    is_roaming, operator_name, zone, cost
+                ))
 
                 cur.execute("""
                     INSERT INTO processing_logs (cdr_id, status, message)
                     VALUES (%s, %s, %s)
-                """, (cdr_id, 'success', 'Processed successfully'))
+                """, (cdr_id, 'success', f'Processed with zone {zone}, cost {cost:.2f}'))
 
             else:
                 cur.execute("""
