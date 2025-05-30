@@ -25,6 +25,9 @@ def process_cdrs(limit=None, simulate_errors=False, verbose=False):
         for cdr in cdrs:
             cdr_id, msisdn, destination, duration, event_type, timestamp = cdr
 
+            if verbose:
+                print(f"🔄 Processing CDR ID {cdr_id}...")
+
             is_valid, validation_message = validate_cdr(cdr)
             if not is_valid:
                 cur.execute("""
@@ -32,6 +35,8 @@ def process_cdrs(limit=None, simulate_errors=False, verbose=False):
                     VALUES (%s, %s, %s)
                 """, (cdr_id, 'failed', validation_message))
                 logging.warning(f"Validation failed for CDR ID {cdr_id} | {validation_message}")
+                if verbose:
+                    print(f" Validation failed: {validation_message}")
                 continue
 
             if simulate_errors and random.random() < 0.2:
@@ -41,7 +46,7 @@ def process_cdrs(limit=None, simulate_errors=False, verbose=False):
                 """, (cdr_id, 'failed', 'Simulated random failure'))
                 logging.warning(f"Simulated failure for CDR ID {cdr_id}")
                 if verbose:
-                    print(f"⚠️ Simulated error for CDR ID {cdr_id}")
+                    print(f" Simulated error for CDR ID {cdr_id}")
                 continue
 
             cur.execute("SELECT country, is_roaming, operator_name FROM hlr_data WHERE msisdn = %s", (msisdn,))
@@ -49,55 +54,55 @@ def process_cdrs(limit=None, simulate_errors=False, verbose=False):
 
             if hlr_result:
                 country, is_roaming, operator_name = hlr_result
-
-                if destination.startswith('355'):
-                    zone = 'ALBANIA'
-                    base_cost = 0.02
-                elif destination.startswith('39'):
-                    zone = 'EU'
-                    base_cost = 0.05
-                else:
-                    zone = 'INTERNATIONAL'
-                    base_cost = 0.10
-
-                cost = base_cost + 0.05 if is_roaming else base_cost
-
-                cur.execute("""
-                    INSERT INTO billing_feed (
-                        msisdn, destination, duration, event_type, timestamp,
-                        is_roaming, operator_name, zone, cost
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (
-                    msisdn, destination, duration, event_type, timestamp,
-                    is_roaming, operator_name, zone, cost
-                ))
-
-                cur.execute("""
-                    INSERT INTO processing_logs (cdr_id, status, message)
-                    VALUES (%s, %s, %s)
-                """, (cdr_id, 'success', f'Processed with zone {zone}, cost {cost:.2f}'))
-                logging.info(f"Processed CDR ID {cdr_id} | Zone: {zone}, Cost: {cost:.2f}")
-                if verbose:
-                    print(f"✅ Success: CDR ID {cdr_id} - Zone: {zone}, Cost: {cost:.2f}")
             else:
-                cur.execute("""
-                    INSERT INTO processing_logs (cdr_id, status, message)
-                    VALUES (%s, %s, %s)
-                """, (cdr_id, 'failed', 'HLR data not found'))
+                country = "UNKNOWN"
+                is_roaming = False
+                operator_name = "UNKNOWN"
                 logging.warning(f"HLR not found for CDR ID {cdr_id} | MSISDN: {msisdn}")
                 if verbose:
-                    print(f"❌ HLR data not found for CDR ID {cdr_id}")
+                    print(f" HLR not found, using fallback values for CDR ID {cdr_id}")
+
+            if destination.startswith('355'):
+                zone = 'ALBANIA'
+                base_cost = 0.02
+            elif destination.startswith('39'):
+                zone = 'EU'
+                base_cost = 0.05
+            else:
+                zone = 'INTERNATIONAL'
+                base_cost = 0.10
+
+            cost = base_cost + 0.05 if is_roaming else base_cost
+
+            cur.execute("""
+                INSERT INTO billing_feed (
+                    msisdn, destination, duration, event_type, timestamp,
+                    is_roaming, operator_name, zone, cost
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                msisdn, destination, duration, event_type, timestamp,
+                is_roaming, operator_name, zone, cost
+            ))
+
+            cur.execute("""
+                INSERT INTO processing_logs (cdr_id, status, message)
+                VALUES (%s, %s, %s)
+            """, (cdr_id, 'success', f'Processed with zone {zone}, cost {cost:.2f}'))
+
+            logging.info(f" Processed CDR ID {cdr_id} | Zone: {zone}, Cost: {cost:.2f}")
+            if verbose:
+                print(f" Success: CDR ID {cdr_id} | Zone: {zone} | Cost: {cost:.2f}")
 
         conn.commit()
-        logging.info("Finished processing CDRs.")
+        logging.info(" Finished processing all CDRs.")
         if verbose:
-            print("✅ All CDRs processed successfully.")
+            print(" Finished processing all CDRs.")
 
     except Exception as e:
         conn.rollback()
-        logging.error(f"Processing error: {e}")
-        print("Error:", e)
+        logging.error(f" Processing error: {e}")
+        print(" Error:", e)
 
     finally:
         cur.close()
