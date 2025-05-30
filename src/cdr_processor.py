@@ -1,24 +1,37 @@
 import argparse
+import logging
+import random
 from src.db_config import get_db_connection
 
-def process_cdrs(limit=None):
+# Konfigurimi i logimit
+logging.basicConfig(
+    filename='logs/processing.log',
+    filemode='a',
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+
+def process_cdrs(limit=None, simulate_errors=False):
     conn = get_db_connection()
     cur = conn.cursor()
 
     try:
-        query = """
-            SELECT * FROM cdr_raw
-            WHERE id NOT IN (SELECT cdr_id FROM processing_logs)
-        """
+        query = "SELECT * FROM cdr_raw"
         if limit:
             query += f" LIMIT {limit}"
         cur.execute(query)
         cdrs = cur.fetchall()
 
-        print(f"Found {len(cdrs)} unprocessed CDRs.")
-
         for cdr in cdrs:
             cdr_id, msisdn, destination, duration, event_type, timestamp = cdr
+
+            if simulate_errors and random.random() < 0.2:
+                cur.execute("""
+                    INSERT INTO processing_logs (cdr_id, status, message)
+                    VALUES (%s, %s, %s)
+                """, (cdr_id, 'failed', 'Simulated random failure'))
+                logging.warning(f"Simulated failure for CDR ID {cdr_id}")
+                continue
 
             cur.execute("SELECT country, is_roaming, operator_name FROM hlr_data WHERE msisdn = %s", (msisdn,))
             hlr_result = cur.fetchone()
@@ -53,18 +66,20 @@ def process_cdrs(limit=None):
                     INSERT INTO processing_logs (cdr_id, status, message)
                     VALUES (%s, %s, %s)
                 """, (cdr_id, 'success', f'Processed with zone {zone}, cost {cost:.2f}'))
-
+                logging.info(f"Processed CDR ID {cdr_id} | Zone: {zone}, Cost: {cost:.2f}")
             else:
                 cur.execute("""
                     INSERT INTO processing_logs (cdr_id, status, message)
                     VALUES (%s, %s, %s)
                 """, (cdr_id, 'failed', 'HLR data not found'))
+                logging.warning(f"HLR not found for CDR ID {cdr_id} | MSISDN: {msisdn}")
 
         conn.commit()
-        print("CDR processing completed.")
+        logging.info("Finished processing CDRs.")
 
     except Exception as e:
         conn.rollback()
+        logging.error(f"Processing error: {e}")
         print("Error:", e)
 
     finally:
@@ -72,11 +87,12 @@ def process_cdrs(limit=None):
         conn.close()
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Process CDRs with optional test mode.")
+    parser = argparse.ArgumentParser(description="Process CDRs with optional test mode and error simulation.")
     parser.add_argument('--test', action='store_true', help="Run in test mode (limit 5 CDRs)")
+    parser.add_argument('--simulate-errors', action='store_true', help="Randomly simulate CDR processing failures")
     args = parser.parse_args()
 
-    if args.test:
-        process_cdrs(limit=5)
-    else:
-        process_cdrs()
+    process_cdrs(
+        limit=5 if args.test else None,
+        simulate_errors=args.simulate_errors
+    )
