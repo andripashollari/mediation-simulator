@@ -3,13 +3,32 @@ import logging
 import random
 from src.db_config import get_db_connection
 
-# Konfigurimi i logimit
 logging.basicConfig(
     filename='logs/processing.log',
     filemode='a',
     format='%(asctime)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+
+def validate_cdr(cdr):
+    cdr_id, msisdn, destination, duration, event_type, timestamp = cdr
+
+    if not msisdn or not msisdn.isdigit() or len(msisdn) < 10:
+        return False, "Invalid MSISDN"
+    
+    if not destination or not destination.startswith(('355', '39')):
+        return False, "Invalid destination"
+    
+    if not isinstance(duration, int) or duration < 0:
+        return False, "Invalid duration"
+    
+    if event_type not in ('voice', 'sms', 'data'):
+        return False, "Invalid event type"
+    
+    if not timestamp:
+        return False, "Missing timestamp"
+    
+    return True, "Valid"
 
 def process_cdrs(limit=None, simulate_errors=False):
     conn = get_db_connection()
@@ -24,6 +43,15 @@ def process_cdrs(limit=None, simulate_errors=False):
 
         for cdr in cdrs:
             cdr_id, msisdn, destination, duration, event_type, timestamp = cdr
+
+            is_valid, validation_message = validate_cdr(cdr)
+            if not is_valid:
+                cur.execute("""
+                    INSERT INTO processing_logs (cdr_id, status, message)
+                    VALUES (%s, %s, %s)
+                """, (cdr_id, 'failed', validation_message))
+                logging.warning(f"Validation failed for CDR ID {cdr_id} | {validation_message}")
+                continue
 
             if simulate_errors and random.random() < 0.2:
                 cur.execute("""
