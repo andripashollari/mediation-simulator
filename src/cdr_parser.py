@@ -1,5 +1,20 @@
 from src.db_config import get_db_connection
 
+def alter_billing_feed_table():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("ALTER TABLE billing_feed ADD COLUMN IF NOT EXISTS cost NUMERIC;")
+        cur.execute("ALTER TABLE billing_feed ADD COLUMN IF NOT EXISTS zone TEXT;")
+        conn.commit()
+    except Exception as e:
+        print("Error altering billing_feed:", e)
+        conn.rollback()
+    finally:
+        cur.close()
+        conn.close()
+
+
 def process_cdrs():
     conn = get_db_connection()
     cur = conn.cursor()
