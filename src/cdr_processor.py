@@ -1,12 +1,21 @@
+import argparse
 from src.db_config import get_db_connection
 
-def process_cdrs():
+def process_cdrs(limit=None):
     conn = get_db_connection()
     cur = conn.cursor()
 
     try:
-        cur.execute("SELECT * FROM cdr_raw LIMIT 5")
+        query = """
+            SELECT * FROM cdr_raw
+            WHERE id NOT IN (SELECT cdr_id FROM processing_logs)
+        """
+        if limit:
+            query += f" LIMIT {limit}"
+        cur.execute(query)
         cdrs = cur.fetchall()
+
+        print(f"Found {len(cdrs)} unprocessed CDRs.")
 
         for cdr in cdrs:
             cdr_id, msisdn, destination, duration, event_type, timestamp = cdr
@@ -52,6 +61,7 @@ def process_cdrs():
                 """, (cdr_id, 'failed', 'HLR data not found'))
 
         conn.commit()
+        print("CDR processing completed.")
 
     except Exception as e:
         conn.rollback()
@@ -60,3 +70,13 @@ def process_cdrs():
     finally:
         cur.close()
         conn.close()
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Process CDRs with optional test mode.")
+    parser.add_argument('--test', action='store_true', help="Run in test mode (limit 5 CDRs)")
+    args = parser.parse_args()
+
+    if args.test:
+        process_cdrs(limit=5)
+    else:
+        process_cdrs()
