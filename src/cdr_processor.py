@@ -2,6 +2,7 @@ import argparse
 import logging
 import random
 from src.db_config import get_db_connection
+from src.validator import validate_cdr
 
 logging.basicConfig(
     filename='logs/processing.log',
@@ -9,26 +10,6 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
-
-def validate_cdr(cdr):
-    cdr_id, msisdn, destination, duration, event_type, timestamp = cdr
-
-    if not msisdn or not msisdn.isdigit() or len(msisdn) < 10:
-        return False, "Invalid MSISDN"
-    
-    if not destination or not destination.startswith(('355', '39')):
-        return False, "Invalid destination"
-    
-    if not isinstance(duration, int) or duration < 0:
-        return False, "Invalid duration"
-    
-    if event_type not in ('voice', 'sms', 'data'):
-        return False, "Invalid event type"
-    
-    if not timestamp:
-        return False, "Missing timestamp"
-    
-    return True, "Valid"
 
 def process_cdrs(limit=None, simulate_errors=False):
     conn = get_db_connection()
