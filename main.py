@@ -1,4 +1,4 @@
-from src.cdr_parser import process_cdrs
+from src.cdr_processor import process_cdrs
 
 if __name__ == "__main__":
     print("Starting mediation process...")
