@@ -1,7 +1,9 @@
 from flask import Flask, jsonify
 from db_config import get_db_connection
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app)
 
 @app.route('/stats/costs', methods=['GET'])
 def cost_stats():
